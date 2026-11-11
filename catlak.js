@@ -142,3 +142,42 @@ window.catlak = async (o = {}) => {
   document.body.append(im, dl);
   return FF === "'Nunito'" ? 'ok' : 'ok (yedek font)';
 };
+
+
+/* --- görsel arama: Wikimedia Commons sayfasında (commons.wikimedia.org) çalışır ---
+   await catlakAra('Kollwitz hunger')  -> numaralı 8 aday ızgarası + liste
+   catlakSec(3)                        -> seçilen adayı kullanılanlara yazar, bilgilerini döndürür
+   Kullanılan eserler bu tarayıcının hafızasında tutulur ve bir daha önerilmez. */
+window.catlakAra = async (q, n = 8) => {
+  const seed = ['File:Adolph Menzel - Eisenwalzwerk - Google Art Project.jpg', 'File:Francisco de Goya, Saturno devorando a su hijo (1819-1823).jpg', 'File:Honoré Daumier - Gargantua.jpg'];
+  let used; try { used = JSON.parse(localStorage.catlakUsed || 'null') || seed; } catch (e) { used = seed; }
+  const api = '/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=40&gsrsearch=' + encodeURIComponent(q + ' filetype:bitmap') +
+    '&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=1600&iiextmetadatafilter=LicenseShortName|Artist|DateTimeOriginal|ObjectName';
+  const s = await (await fetch(api)).json();
+  const strip = v => (v || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const out = [];
+  for (const pg of Object.values(s.query?.pages || {}).sort((a, b) => a.index - b.index)) {
+    const ii = pg.imageinfo?.[0]; if (!ii) continue;
+    const m = ii.extmetadata || {};
+    if (!/public domain|^pd|cc0/i.test(m.LicenseShortName?.value || '')) continue;
+    if (used.includes(pg.title) || Math.min(ii.width, ii.height) < 900) continue;
+    out.push({ dosya: pg.title, url: ii.thumburl || ii.url, eser: strip(m.ObjectName?.value), sanatci: strip(m.Artist?.value), tarih: strip(m.DateTimeOriginal?.value) });
+    if (out.length >= n) break;
+  }
+  window.__catlakAday = out;
+  document.body.innerHTML = '';
+  document.body.style.cssText = 'margin:0;background:#111;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px';
+  out.forEach((c, i) => {
+    const d = document.createElement('div'); d.style.position = 'relative';
+    d.innerHTML = `<img src="${c.url}" style="width:100%;height:46vh;object-fit:cover;display:block"><b style="position:absolute;top:4px;left:4px;background:#c8201e;color:#fff;font:bold 18px sans-serif;padding:2px 9px">${i}</b>`;
+    document.body.append(d);
+  });
+  return { aday: out.map((c, i) => `${i}: ${c.dosya.replace('File:', '').slice(0, 80)}`), sonKullanilan: used.slice(-6).map(t => t.replace('File:', '').slice(0, 50)) };
+};
+window.catlakSec = i => {
+  const c = window.__catlakAday[i];
+  let used; try { used = JSON.parse(localStorage.catlakUsed || '[]'); } catch (e) { used = []; }
+  if (!used.includes(c.dosya)) used.push(c.dosya);
+  try { localStorage.catlakUsed = JSON.stringify(used.slice(-500)); } catch (e) {}
+  return c;
+};
